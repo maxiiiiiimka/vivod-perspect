@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>8 Колб — Данные из Google Sheets</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    min-height: 100vh;
+    background: #0a0a1a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #fff;
+    padding: 20px;
+  }
+
+  h1 {
+    margin-bottom: 10px;
+    font-size: 1.8rem;
+    background: linear-gradient(90deg, #00d2ff, #7b2ff7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .status {
+    margin-bottom: 30px;
+    font-size: 0.9rem;
+    color: #888;
+  }
+  .status.ok { color: #4caf50; }
+  .status.err { color: #f44336; }
+
+  .flasks-container {
+    display: flex;
+    gap: 30px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-end;
+  }
+
+  /* ===== КОЛБА ===== */
+  .flask-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .flask {
+    position: relative;
+    width: 80px;
+    height: 200px;
+    border: 3px solid rgba(255,255,255,0.3);
+    border-top: none;
+    border-radius: 0 0 20px 20px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.03);
+  }
+
+  /* Горлышко колбы */
+  .flask::before {
+    content: '';
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 20px;
+    border: 3px solid rgba(255,255,255,0.3);
+    border-bottom: none;
+    border-radius: 5px 5px 0 0;
+  }
+
+  /* Жидкость */
+  .liquid {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 0%;
+    transition: height 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    border-radius: 0 0 17px 17px;
+  }
+
+  /* Волна сверху жидкости */
+  .liquid::before,
+  .liquid::after {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: -10%;
+    width: 120%;
+    height: 16px;
+    border-radius: 40%;
+  }
+
+  .liquid::before {
+    background: inherit;
+    opacity: 0.6;
+    animation: wave 3s linear infinite;
+  }
+
+  .liquid::after {
+    background: inherit;
+    opacity: 0.4;
+    animation: wave 2s linear infinite reverse;
+  }
+
+  @keyframes wave {
+    0%   { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  /* Блик на стекле */
+  .flask::after {
+    content: '';
+    position: absolute;
+    top: 10px;
+    left: 8px;
+    width: 12px;
+    height: 60%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.15), transparent);
+    border-radius: 10px;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  /* Значение */
+  .value {
+    position: absolute;
+    bottom: 50%;
+    left: 50%;
+    transform: translate(-50%, 50%);
+    font-size: 1.1rem;
+    font-weight: bold;
+    z-index: 3;
+    text-shadow: 0 0 8px rgba(0,0,0,0.8);
+    transition: bottom 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  .label {
+    font-size: 0.85rem;
+    color: #aaa;
+    text-align: center;
+    max-width: 90px;
+  }
+
+  /* ===== ЦВЕТА КОЛБ ===== */
+  .flask-wrapper:nth-child(1) .liquid { background: linear-gradient(0deg, #ff416c, #ff4b2b); }
+  .flask-wrapper:nth-child(2) .liquid { background: linear-gradient(0deg, #f7971e, #ffd200); }
+  .flask-wrapper:nth-child(3) .liquid { background: linear-gradient(0deg, #11998e, #38ef7d); }
+  .flask-wrapper:nth-child(4) .liquid { background: linear-gradient(0deg, #6a11cb, #2575fc); }
+  .flask-wrapper:nth-child(5) .liquid { background: linear-gradient(0deg, #fc4a1a, #f7b733); }
+  .flask-wrapper:nth-child(6) .liquid { background: linear-gradient(0deg, #00b4db, #0083b0); }
+  .flask-wrapper:nth-child(7) .liquid { background: linear-gradient(0deg, #c471f5, #fa71cd); }
+  .flask-wrapper:nth-child(8) .liquid { background: linear-gradient(0deg, #00c9ff, #92fe9d); }
+
+  /* Пузырьки */
+  .bubble {
+    position: absolute;
+    background: rgba(255,255,255,0.2);
+    border-radius: 50%;
+    animation: rise 2.5s ease-in infinite;
+    z-index: 1;
+  }
+  @keyframes rise {
+    0%   { transform: translateY(0) scale(1); opacity: 0.6; }
+    100% { transform: translateY(-180px) scale(0.3); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+
+<h1>🧪 Лаборатория данных</h1>
+<p class="status" id="status">Загрузка данных из Google Sheets...</p>
+
+<div class="flasks-container" id="flasks"></div>
+
+<script>
+// =============================================
+//  ВСТАВЬ СВОЙ ID ТАБЛИЦЫ СЮДА
+// =============================================
+const SPREADSHEET_ID = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTOsr5b14xxsvPN_YbBrscLa_iiuE5_y9_dl0kQFBBdeyCuTZG-HDBSTefg7oxrAs51kFwCE3Vo31YB/pubhtml?gid=763684388&single=true';
+
+// Цвета для пузырьков (совпадают с градиентами)
+const COLORS = [
+  '#ff416c','#ffd200','#38ef7d','#2575fc',
+  '#f7b733','#00b4db','#fa71cd','#92fe9d'
+];
+
+// Создаём 8 колб в DOM
+const container = document.getElementById('flasks');
+for (let i = 0; i < 8; i++) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'flask-wrapper';
+  wrapper.innerHTML = `
+    <div class="flask">
+      <div class="liquid" id="liquid-${i}"></div>
+      <div class="value" id="value-${i}">0</div>
+    </div>
+    <div class="label" id="label-${i}">Колба ${i + 1}</div>
+  `;
+  container.appendChild(wrapper);
+}
+
+// Генерируем пузырьки внутри каждой колбы
+document.querySelectorAll('.flask').forEach((flask, i) => {
+  for (let b = 0; b < 4; b++) {
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    const size = Math.random() * 8 + 4;
+    bubble.style.width = size + 'px';
+    bubble.style.height = size + 'px';
+    bubble.style.left = Math.random() * 60 + 10 + 'px';
+    bubble.style.bottom = Math.random() * 30 + 'px';
+    bubble.style.animationDelay = Math.random() * 3 + 's';
+    bubble.style.animationDuration = (Math.random() * 2 + 2) + 's';
+    flask.appendChild(bubble);
+  }
+});
+
+// Загрузка данных
+async function loadData() {
+  const statusEl = document.getElementById('status');
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json`;
+    const response = await fetch(url);
+    const text = await response.text();
+
+    // Google возвращает JSONP-подобный ответ, нужно обрезать
+    const jsonStr = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);?/);
+    if (!jsonStr) throw new Error('Не удалось распарсить ответ');
+
+    const data = JSON.parse(jsonStr[1]);
+    const rows = data.table.rows;
+
+    for (let i = 0; i < Math.min(rows.length, 8); i++) {
+      const name = rows[i].c[0]?.v ?? `Колба ${i + 1}`;
+      const val  = Math.min(Math.max(rows[i].c[1]?.v ?? 0, 0), 100);
+
+      document.getElementById(`label-${i}`).textContent = name;
+      document.getElementById(`value-${i}`).textContent = val;
+
+      // Заполняем жидкость
+      const liquid = document.getElementById(`liquid-${i}`);
+      // Небольшая задержка для анимации
+      setTimeout(() => {
+        liquid.style.height = val + '%';
+      }, i * 150);
+    }
+
+    statusEl.textContent = '✅ Данные загружены успешно';
+    statusEl.className = 'status ok';
+
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = '❌ Ошибка загрузки: ' + err.message;
+    statusEl.className = 'status err';
+
+    // Демо-режим: заполняем случайными данными
+    statusEl.textContent += ' (показан демо-режим)';
+    for (let i = 0; i < 8; i++) {
+      const val = Math.floor(Math.random() * 101);
+      document.getElementById(`value-${i}`).textContent = val;
+      setTimeout(() => {
+        document.getElementById(`liquid-${i}`).style.height = val + '%';
+      }, i * 150);
+    }
+  }
+}
+
+loadData();
+
+// Автообновление каждые 30 секунд
+setInterval(loadData, 30000);
+</script>
+
+</body>
+</html>
